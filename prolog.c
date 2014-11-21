@@ -66,8 +66,8 @@ const mpc_ast_t *find_tag_next(find_tag_state_t *state, const char *tag) {
 }
 
 void define_facts(const mpc_ast_t *ast) {
-  int ident_number;
-  int i;
+  int ident_number,
+      i;
   char *params[MAX_PARAMS];
   find_tag_state_t fact_state,
                    predicate_state,
@@ -101,6 +101,7 @@ void define_facts(const mpc_ast_t *ast) {
 	}
       }
     }
+    printf("\n");
   }
 }
 
@@ -111,7 +112,9 @@ int main(int argc, char **argv) {
   mpc_parser_t	*Ident	   = mpc_new("ident");
   mpc_parser_t	*Params	   = mpc_new("params");
   mpc_parser_t	*Predicate = mpc_new("predicate");
+  mpc_parser_t  *Union     = mpc_new("union");
   mpc_parser_t	*Fact	   = mpc_new("fact");
+  mpc_parser_t  *Query     = mpc_new("query");
   mpc_parser_t	*Lang	   = mpc_new("lang");
 
   int return_value;
@@ -123,16 +126,21 @@ int main(int argc, char **argv) {
 	    " ident     : <constant> | <variable>;                 "
 	    " params    : <ident> (',' <ident>)*;                  "
 	    " predicate : <ident> '(' <params> ')';                "
-	    " fact      : <predicate> '.';                         "
-	    " lang      : /^/ <fact>+ /$/;                         ",
-	    Constant, Variable, Ident, Params, Predicate, Fact, Lang, NULL);
+	    " union     : <predicate> (',' <predicate>)*;          "
+	    " fact      : <union> '.';                             "
+	    " query     : \"?-\" <union> '.';                      "
+	    " lang      : /^/ (<fact> | <query>)+ /$/;             ",
+	    Constant, Variable, Ident, Params, Predicate, Union, Fact, Query,
+	    Lang, NULL);
 
   printf("Constant:  "); mpc_print(Constant);
   printf("Variable:  "); mpc_print(Variable);
   printf("Ident:     "); mpc_print(Ident);
   printf("Params:    "); mpc_print(Params);
   printf("Predicate: "); mpc_print(Predicate);
+  printf("Union:     "); mpc_print(Union);
   printf("Fact:      "); mpc_print(Fact);
+  printf("Query:     "); mpc_print(Query);
   printf("Lang:      "); mpc_print(Lang);
 
   if (argc > 1) {

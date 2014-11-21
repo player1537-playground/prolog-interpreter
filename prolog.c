@@ -2,6 +2,16 @@
 #include "mpc/mpc.h"
 #include <assert.h>
 
+#define NEW(type, num) ((type*)malloc(sizeof((type)) * (num)))
+#define TYPE_SUB_POINTER(var) (typeof(*(typeof(orig))0))
+#define RENEW(orig, num) ((typeof(orig))realloc((orig),			\
+						sizeof(TYPE_SUB_POINTER(orig)) * (num)))
+#define MAX_PARAMS 10
+#define ENLARGE_FACTOR 2
+
+/*****************************************
+ * AST Functions
+ *****************************************/
 void print_tags(const mpc_ast_t *ast, const int depth) {
   int i;
 
@@ -104,6 +114,99 @@ void define_facts(const mpc_ast_t *ast) {
     printf("\n");
   }
 }
+
+/*****************************************
+ * Symbol Table Functions
+ *****************************************/
+void initialize_symbol_table(symbol_table_t *table) {
+  table->num_symbols = table->num_allocated = 0;
+  table->symbols = NULL;
+}
+
+void initialize_symbol_table_node(symbol_table_node_t *node, const char *name) {
+  node->num_link = node->num_allocated = 0;
+  node->name = name;
+  node->links = NULL;
+}
+
+void initialize_symbol_table_to_predicate(symbol_table_to_predicate_t *link,
+					  int pos,
+					  predicate_table_to_symbol_t *ref) {
+  link->position = pos;
+  link->predicate = ref;
+}
+
+symbol_table_node_t *symbol_table_add(symbol_table_t *table, const char *name) {
+  symbol_table_node_t *node = NEW(symbol_table_node_t, 1);
+
+  initialize_symbol_table_node(node, name);
+
+  if (table->num_symbols >= table->num_allocated) {
+    symbol_table_enlarge(table);
+  }
+
+  table->symbols[table->num_symbols]++ = node;
+  return node;
+}
+
+void symbol_table_link_add(symbol_table_node_t *node,
+			   int pos,
+			   predicate_table_to_symbol_t *predicate) {
+  symbol_table_to_predicate_t *link = NEW(symbol_table_to_predicate_t, 1);
+
+  initialize_symbol_table_to_predicate(link, pos, predicate);
+
+  if (node->num_link >= node->num_allocated) {
+    symbol_table_node_enlarge(node);
+  }
+
+  node->links[node->num_link++] = link;
+}
+
+void symbol_table_enlarge(symbol_table_t *table) {
+  table->num_allocated *= ENLARGE_FACTOR;
+  table->symbols = RENEW(table->symbols, table->num_allocated);
+}
+
+void symbol_table_node_enlarge(symbol_table_node_t *node) {
+  node->num_allocated *= ENLARGE_FACTOR;
+  node->links = RENEW(node->links
+}
+
+/*****************************************
+ * Predicate Table Functions
+ *****************************************/
+void initialize_predicate_table(predicate_table_t *table) {
+  table->num_predicates = table->num_allocated = 0;
+  table->predicates = NULL;
+}
+
+void initialize_predicate_table_node(predicate_table_node_t *node, const char *name) {
+  node->num_link = node->num_allocated = 0;
+  node->name = name;
+  node->links = NULL;
+}
+
+void initialize_predicate_table_to_symbol(predicate_table_to_symbol_t *link,
+					  int arity,
+					  ...) {
+  va_list argp;
+  symbol_table_node_t *symbol;
+  int i;
+
+  va_start(argp, arity);
+
+  link->position = pos;
+  link->predicate = ref;
+  link->nodes = NEW(symbol_table_node_t *, arity);
+
+  for (i=0; i<arity; ++i) {
+    link->nodes[i] = va_arg(argp, symbol_table_node_t *);
+  }
+
+  va_end(argp);
+}
+
 
 int main(int argc, char **argv) {
 

@@ -11,6 +11,7 @@ typedef struct find_tag_state_t {
 } find_tag_state_t;
 
 void print_tags(const mpc_ast_t *, const int);
+const mpc_ast_t *find_tag(const mpc_ast_t *ast, const char *tag);
 void initialize_tag_state(find_tag_state_t *, const mpc_ast_t *);
 const mpc_ast_t *find_tag_next(find_tag_state_t *, const char *);
 void define_facts(const mpc_ast_t *);

@@ -1,5 +1,6 @@
 #include "prolog.h"
 #include "mpc/mpc.h"
+#include <assert.h>
 
 void print_tags(const mpc_ast_t *ast, const int depth) {
   int i;
@@ -19,10 +20,17 @@ void initialize_tag_state(find_tag_state_t *state, const mpc_ast_t *ast) {
   state->child = 0;
 }
 
+const mpc_ast_t *find_tag(const mpc_ast_t *ast, const char *tag) {
+  find_tag_state_t state;
+
+  initialize_tag_state(&state, ast);
+  return find_tag_next(&state, tag);
+}
+
 const mpc_ast_t *find_tag_next(find_tag_state_t *state, const char *tag) {
   int i,
-      j;
-  int children_num = state->ast->children_num;
+      j,
+      children_num;
   const mpc_ast_t *child_ast,
                   *parent = state->ast,
                   *return_value;
@@ -30,6 +38,8 @@ const mpc_ast_t *find_tag_next(find_tag_state_t *state, const char *tag) {
   if (parent == NULL) {
     return NULL;
   }
+
+  children_num = parent->children_num;
 
   for (i=state->child; i<children_num; ++i) {
     child_ast = parent->children[i];
@@ -96,6 +106,8 @@ void define_facts(const mpc_ast_t *ast) {
 
 int main(int argc, char **argv) {
 
+  mpc_parser_t	*Constant  = mpc_new("constant");
+  mpc_parser_t	*Variable  = mpc_new("variable");
   mpc_parser_t	*Ident	   = mpc_new("ident");
   mpc_parser_t	*Params	   = mpc_new("params");
   mpc_parser_t	*Predicate = mpc_new("predicate");
@@ -106,13 +118,17 @@ int main(int argc, char **argv) {
   mpc_result_t r;
 
   mpca_lang(MPCA_LANG_DEFAULT,
-	    " ident     : /[a-z0-9_]+/;                            "
+	    " constant  : /[a-z0-9_]+/;                            "
+	    " variable  : /[A-Z][a-z0-9_]*/;                       "
+	    " ident     : <constant> | <variable>;                 "
 	    " params    : <ident> (',' <ident>)*;                  "
 	    " predicate : <ident> '(' <params> ')';                "
 	    " fact      : <predicate> '.';                         "
 	    " lang      : /^/ <fact>+ /$/;                         ",
-	    Ident, Params, Predicate, Fact, Lang, NULL);
+	    Constant, Variable, Ident, Params, Predicate, Fact, Lang, NULL);
 
+  printf("Constant:  "); mpc_print(Constant);
+  printf("Variable:  "); mpc_print(Variable);
   printf("Ident:     "); mpc_print(Ident);
   printf("Params:    "); mpc_print(Params);
   printf("Predicate: "); mpc_print(Predicate);

@@ -116,6 +116,42 @@ void print_symbols(symbol_table_t *);
 void print_predicates(predicate_table_t *);
 void print_rules(symbol_table_t *, predicate_table_t *);
 /*****************************************
+ * Solve Functions
+ *****************************************/
+typedef struct solve_goal_state_t {
+  struct solve_goal_t *goal;
+  int subgoal_index;
+  struct predicate_table_to_symbol_t *candidate;
+  int candidate_index;
+} solve_goal_state_t;
+
+typedef struct solve_t {
+  int num_goals;
+  struct solve_goal_t **goals;
+  struct solve_goal_state_t **states;
+} solve_t;
+
+typedef struct solve_goal_t {
+  struct predicate_table_node_t *predicate;
+  int num_subgoals;
+  struct solve_subgoal_t **subgoals;
+} solve_goal_t;
+
+typedef struct solve_subgoal_t {
+  int pos;
+  struct solve_condition_t *condition;
+} solve_subgoal_t;
+
+typedef enum { CONSTANT, VARIABLE } solve_condition_type_t;
+
+typedef struct solve_condition_t {
+  const char *name;
+  enum solve_condition_type_t type;
+  struct symbol_table_node_t *symbol;
+} solve_condition_t;
+
+
+/*****************************************
  * Main Function
  *****************************************/
 int main(int, char **);

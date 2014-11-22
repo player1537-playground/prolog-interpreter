@@ -302,6 +302,109 @@ predicate_table_node_t *predicate_table_find(predicate_table_t *table,
 }
 
 /*****************************************
+ * Solve Functions
+ *****************************************/
+void initialize_solve(solve_t *solve, int num_goals) {
+  int i;
+
+  solve->num_goals = num_goals;
+  solve->goals = NEW(solve_goal_t *, num_goals);
+  solve->states = NEW(solve_goal_state_t *, num_goals);
+
+  for (i=0; i<num_goals; ++i) {
+    solve->goals[i] = solve->states[i] = NULL;
+  }
+}
+
+void solve_add(solve_t *solve, solve_goal_t *goal) {
+  int i;
+
+  for (i=0; i<solve->num_goals && solve->goals[i] != NULL; ++i) {
+    // Do nothing.
+  }
+
+  assert(i != solve->num_goals);
+
+  solve->goals[i] = goal;
+  initialize_solve_goal_state(solve->states[i], goal);
+}
+
+void initialize_solve_goal_state(solve_goal_state_t *state,
+				 solve_goal_t *goal) {
+  state->goal = goal;
+  state->subgoal_index = 0;
+  state->candidate = NULL;
+  state->candidate_index = 0;
+}
+
+void initialize_solve_goal(solve_goal_t *goal,
+			   predicate_table_node_t *predicate,
+			   int num_subgoals) {
+  int i;
+
+  goal->predicate = predicate;
+  goal->num_subgoals = num_subgoals;
+  goal->subgoals = NEW(solve_subgoal_t *, num_subgoals);
+
+  for (i=0; i<num_subgoals; ++i) {
+    goal->subgoals[i] = NULL;
+  }
+}
+
+void solve_goal_add(solve_goal_t *goal, solve_subgoal_t *subgoal) {
+  int i;
+
+  for (i=0; i<goal->num_subgoals && goal->subgoals[i] != NULL; ++i) {
+    // Do nothing.
+  }
+
+  assert(i != goal->num_subgoals);
+
+  goal->subgoals[i] = subgoal;
+}
+
+void initialize_solve_subgoal(solve_subgoal_t *subgoal,
+			      int pos,
+			      solve_condition_t *condition) {
+  subgoal->pos = pos;
+  subgoal->condition = condition;
+}
+
+void initialize_solve_condition_constant(solve_condition_t *condition,
+					 symbol_table_node_t *symbol) {
+  condition->type = CONSTANT;
+  condition->symbol = symbol;
+}
+
+void initialize_solve_condition_variable(solve_condition_t *variable) {
+  condition->type = VARIABLE;
+  condition->symbol = NULL;
+}
+
+void solve_goal_helper(solve_goal_t *goal,
+		       symbol_table_t *symbol_table,
+		       predicate_table_t *predicate_table,
+		       const char *pred_name,
+		       int num_params,
+		       const char *param_names) {
+  predicate_table_node_t *predicate;
+  int i;
+
+  predicate = predicate_table_find(predicate_table, pred_name);
+
+  assert(predicate != NULL);
+  initialize_solve_goal(predicate, num_params);
+
+  for (i=0; i<num_params; ++i) {
+    // Lookup each param_name in the symbol table
+    // Add the symbol to the solve_goal
+    // Note: May need to actually add a solve_table_t to keep track of all the
+    //   instantiated values, and to aid with looking up variable names.
+  }
+}
+
+
+/*****************************************
  * Rule Functions
  *****************************************/
 void define_facts(const mpc_ast_t *ast,
@@ -337,6 +440,27 @@ void define_facts(const mpc_ast_t *ast,
 	       params[0],
 	       ident_number - 1,
 	       &params[1]);
+    }
+  }
+}
+
+void execute_queries(const mpc_ast_t *ast,
+		     symbol_table_t *symbol_table,
+		     predicate_table_t *predicate_table) {
+  const char *params[MAX_PARAMS];
+  find_tag_state_t query_state,
+                   predicate_state,
+                   pred_ident,
+                   ident_state;
+  const mpc_ast_t *query,
+                  *predicate,
+                  *ident;
+
+  initialize_tag_state(&query_state, ast);
+  while ((query = find_tag_next(&query_state, "query")) != NULL) {
+    initialize_tag_state(&predicate_state, query);
+    while ((predicate = find_tag_next(&predicate_state, "predicate")) != NULL) {
+
     }
   }
 }

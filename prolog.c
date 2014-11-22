@@ -2,10 +2,8 @@
 #include "mpc/mpc.h"
 #include <assert.h>
 
-#define NEW(type, num) ((type*)malloc(sizeof((type)) * (num)))
-#define TYPE_SUB_POINTER(var) (typeof(*(typeof(orig))0))
-#define RENEW(orig, num) ((typeof(orig))realloc((orig),			\
-						sizeof(TYPE_SUB_POINTER(orig)) * (num)))
+#define NEW(type, num) ((type*)malloc(sizeof(type) * (num)))
+#define RENEW(orig, type, num) ((type*)realloc((orig), sizeof(type) * (num)))
 #define MAX_PARAMS 10
 #define ENLARGE_FACTOR 2
 
@@ -78,7 +76,7 @@ const mpc_ast_t *find_tag_next(find_tag_state_t *state, const char *tag) {
 void define_facts(const mpc_ast_t *ast) {
   int ident_number,
       i;
-  char *params[MAX_PARAMS];
+  const char *params[MAX_PARAMS];
   find_tag_state_t fact_state,
                    predicate_state,
                    ident_state;
@@ -131,9 +129,11 @@ void initialize_symbol_table_node(symbol_table_node_t *node, const char *name) {
 
 void initialize_symbol_table_to_predicate(symbol_table_to_predicate_t *link,
 					  int pos,
+					  predicate_table_node_t *predicate,
 					  predicate_table_to_symbol_t *ref) {
   link->position = pos;
-  link->predicate = ref;
+  link->predicate = predicate;
+  link->link = ref;
 }
 
 symbol_table_node_t *symbol_table_add(symbol_table_t *table, const char *name) {
@@ -145,16 +145,17 @@ symbol_table_node_t *symbol_table_add(symbol_table_t *table, const char *name) {
     symbol_table_enlarge(table);
   }
 
-  table->symbols[table->num_symbols]++ = node;
+  table->symbols[table->num_symbols++] = node;
   return node;
 }
 
 void symbol_table_link_add(symbol_table_node_t *node,
 			   int pos,
-			   predicate_table_to_symbol_t *predicate) {
+			   predicate_table_node_t *predicate,
+			   predicate_table_to_symbol_t *ref) {
   symbol_table_to_predicate_t *link = NEW(symbol_table_to_predicate_t, 1);
 
-  initialize_symbol_table_to_predicate(link, pos, predicate);
+  initialize_symbol_table_to_predicate(link, pos, predicate, ref);
 
   if (node->num_link >= node->num_allocated) {
     symbol_table_node_enlarge(node);
@@ -165,12 +166,31 @@ void symbol_table_link_add(symbol_table_node_t *node,
 
 void symbol_table_enlarge(symbol_table_t *table) {
   table->num_allocated *= ENLARGE_FACTOR;
-  table->symbols = RENEW(table->symbols, table->num_allocated);
+  table->symbols = RENEW(table->symbols,
+			 symbol_table_node_t *,
+			 table->num_allocated);
 }
 
 void symbol_table_node_enlarge(symbol_table_node_t *node) {
   node->num_allocated *= ENLARGE_FACTOR;
-  node->links = RENEW(node->links
+  node->links = RENEW(node->links,
+		      symbol_table_to_predicate_t *,
+		      node->num_allocated);
+}
+
+symbol_table_node_t *symbol_table_find(symbol_table_t *table,
+				       const char *name) {
+  int i;
+  symbol_table_node_t *node;
+
+  for (i=0; i<table->num_symbols; ++i) {
+    node = table->symbols[i];
+    if (strcmp(name, node->name) == 0) {
+      return node;
+    }
+  }
+
+  return NULL;
 }
 
 /*****************************************
@@ -181,33 +201,147 @@ void initialize_predicate_table(predicate_table_t *table) {
   table->predicates = NULL;
 }
 
-void initialize_predicate_table_node(predicate_table_node_t *node, const char *name) {
+void initialize_predicate_table_node(predicate_table_node_t *node,
+				     const char *name) {
   node->num_link = node->num_allocated = 0;
   node->name = name;
   node->links = NULL;
 }
 
 void initialize_predicate_table_to_symbol(predicate_table_to_symbol_t *link,
-					  int arity,
-					  ...) {
-  va_list argp;
-  symbol_table_node_t *symbol;
+					  int arity) {
+  link->arity = arity;
+  link->nodes = NEW(symbol_table_node_t *, arity);
+}
+
+predicate_table_node_t *predicate_table_add(predicate_table_t *table,
+					    const char *name) {
+  predicate_table_node_t *node = NEW(predicate_table_node_t, 1);
+
+  initialize_predicate_table_node(node, name);
+
+  if (table->num_predicates >= table->num_allocated) {
+    predicate_table_enlarge(table);
+  }
+
+  table->predicates[table->num_predicates++] = node;
+  return node;
+}
+
+predicate_table_to_symbol_t *predicate_table_link_add(
+    predicate_table_node_t *node,
+    int arity,
+    symbol_table_node_t **nodes) {
+  predicate_table_to_symbol_t *link = NEW(predicate_table_to_symbol_t, 1);
   int i;
 
-  va_start(argp, arity);
-
-  link->position = pos;
-  link->predicate = ref;
+  link->arity = arity;
   link->nodes = NEW(symbol_table_node_t *, arity);
 
   for (i=0; i<arity; ++i) {
-    link->nodes[i] = va_arg(argp, symbol_table_node_t *);
+    link->nodes[i] = nodes[i];
   }
 
-  va_end(argp);
+  if (node->num_link >= node->num_allocated) {
+    predicate_table_node_enlarge(node);
+  }
+
+  node->links[node->num_link++] = link;
+  return link;
 }
 
+void predicate_table_enlarge(predicate_table_t *table) {
+  table->num_allocated *= ENLARGE_FACTOR;
+  table->predicates = RENEW(table->predicates,
+			    predicate_table_node_t *,
+			    table->num_allocated);
+}
 
+void predicate_table_node_enlarge(predicate_table_node_t *node) {
+  node->num_allocated *= ENLARGE_FACTOR;
+  node->links = RENEW(node->links,
+		      predicate_table_to_symbol_t *,
+		      node->num_allocated);
+}
+
+predicate_table_node_t *predicate_table_find(predicate_table_t *table,
+					     const char *name) {
+  int i;
+  predicate_table_node_t *node;
+
+  for (i=0; i<table->num_predicates; ++i) {
+    node = table->predicates[i];
+    if (strcmp(name, node->name) == 0) {
+      return node;
+    }
+  }
+
+  return NULL;
+}
+
+/*****************************************
+ * Rule Functions
+ *****************************************/
+void rule_add(symbol_table_t *symbol_table,
+	      predicate_table_t *predicate_table,
+	      const char *pred_name,
+	      int arity,
+	      const char **strings) {
+  int i;
+  predicate_table_node_t *predicate;
+  predicate_table_to_symbol_t *link;
+  symbol_table_node_t *symbols[MAX_PARAMS];
+  symbol_table_node_t *symbol;
+
+  predicate = predicate_table_find(predicate_table, pred_name);
+  if (!predicate) {
+    predicate = predicate_table_add(predicate_table, pred_name);
+  }
+
+  for (i=0; i<arity; ++i) {
+    symbol = symbol_table_find(symbol_table, strings[i]);
+    if (!symbol) {
+      symbol = symbol_table_add(symbol_table, strings[i]);
+    }
+
+    symbols[i] = symbol;
+  }
+
+  link = predicate_table_link_add(predicate, arity, symbols);
+
+  for (i=0; i<arity; ++i) {
+    symbol_table_link_add(symbols[i], arity, predicate, link);
+  }
+}
+
+void print_symbols(symbol_table_t *table) {
+  int i,
+      j;
+  symbol_table_node_t *node;
+  symbol_table_to_predicate_t *link;
+  predicate_table_node_t *predicate;
+
+  printf("Symbol Table:\n");
+  for (i=0; i<table->num_symbols; ++i) {
+    node = table->symbols[i];
+    printf("'%s':\n", node->name);
+    for (j=0; j<node->num_link; ++j) {
+      link = node->links[j];
+      predicate = link->predicate;
+      printf("\t'%s': %d\n", predicate->name, link->position);
+    }
+  }
+}
+
+void print_rules(symbol_table_t *symbol_table,
+		 predicate_table_t *predicate_table) {
+  print_symbols(symbol_table);
+  predicate_table = predicate_table;
+}
+
+/*****************************************
+ * Main function
+ *****************************************/
 int main(int argc, char **argv) {
 
   mpc_parser_t	*Constant  = mpc_new("constant");

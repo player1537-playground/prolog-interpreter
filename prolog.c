@@ -131,58 +131,20 @@ const mpc_ast_t *find_tag_next(find_tag_state_t *state, const char *tag) {
   return NULL;
 }
 
-void define_facts(const mpc_ast_t *ast) {
-  int ident_number,
-      i;
-  const char *params[MAX_PARAMS];
-  find_tag_state_t fact_state,
-                   predicate_state,
-                   ident_state;
-  const mpc_ast_t *fact,
-                  *predicate,
-                  *ident;
-
-  initialize_tag_state(&fact_state, ast);
-  while ((fact = find_tag_next(&fact_state, "fact")) != NULL) {
-    initialize_tag_state(&predicate_state, fact);
-    while ((predicate = find_tag_next(&predicate_state, "predicate")) != NULL) {
-      ident_number = 0;
-
-      for (i=0; i<MAX_PARAMS; ++i) {
-	params[i] = NULL;
-      }
-
-      initialize_tag_state(&ident_state, predicate);
-      while ((ident = find_tag_next(&ident_state, "ident")) != NULL) {
-	params[ident_number++] = ident->contents;
-      }
-
-      for (i=0; i<ident_number; ++i) {
-	if (i == 0) {
-	  printf("%s(", params[i]);
-	} else if (i == ident_number - 1) {
-	  printf("%s)\n", params[i]);
-	} else {
-	  printf("%s,", params[i]);
-	}
-      }
-    }
-    printf("\n");
-  }
-}
-
 /*****************************************
  * Symbol Table Functions
  *****************************************/
 void initialize_symbol_table(symbol_table_t *table) {
-  table->num_symbols = table->num_allocated = 0;
-  table->symbols = NULL;
+  table->num_symbols = 0;
+  table->num_allocated = 1;
+  table->symbols = NEW(symbol_table_node_t *, table->num_allocated);
 }
 
 void initialize_symbol_table_node(symbol_table_node_t *node, const char *name) {
-  node->num_link = node->num_allocated = 0;
+  node->num_link = 0;
+  node->num_allocated = 1;
+  node->links = NEW(symbol_table_to_predicate_t *, node->num_allocated);
   node->name = name;
-  node->links = NULL;
 }
 
 void initialize_symbol_table_to_predicate(symbol_table_to_predicate_t *link,
@@ -255,15 +217,17 @@ symbol_table_node_t *symbol_table_find(symbol_table_t *table,
  * Predicate Table Functions
  *****************************************/
 void initialize_predicate_table(predicate_table_t *table) {
-  table->num_predicates = table->num_allocated = 0;
-  table->predicates = NULL;
+  table->num_predicates = 0;
+  table->num_allocated = 1;
+  table->predicates = NEW(predicate_table_node_t *, table->num_allocated);
 }
 
 void initialize_predicate_table_node(predicate_table_node_t *node,
 				     const char *name) {
-  node->num_link = node->num_allocated = 0;
+  node->num_link = 0;
+  node->num_allocated = 1;
   node->name = name;
-  node->links = NULL;
+  node->links = NEW(predicate_table_to_symbol_t *, node->num_allocated);
 }
 
 void initialize_predicate_table_to_symbol(predicate_table_to_symbol_t *link,
@@ -340,6 +304,43 @@ predicate_table_node_t *predicate_table_find(predicate_table_t *table,
 /*****************************************
  * Rule Functions
  *****************************************/
+void define_facts(const mpc_ast_t *ast,
+		  symbol_table_t *symbol_table,
+		  predicate_table_t *predicate_table) {
+  int ident_number,
+      i;
+  const char *params[MAX_PARAMS];
+  find_tag_state_t fact_state,
+                   predicate_state,
+                   ident_state;
+  const mpc_ast_t *fact,
+                  *predicate,
+                  *ident;
+
+  initialize_tag_state(&fact_state, ast);
+  while ((fact = find_tag_next(&fact_state, "fact")) != NULL) {
+    initialize_tag_state(&predicate_state, fact);
+    while ((predicate = find_tag_next(&predicate_state, "predicate")) != NULL) {
+      ident_number = 0;
+
+      for (i=0; i<MAX_PARAMS; ++i) {
+	params[i] = NULL;
+      }
+
+      initialize_tag_state(&ident_state, predicate);
+      while ((ident = find_tag_next(&ident_state, "ident")) != NULL) {
+	params[ident_number++] = ident->contents;
+      }
+
+      rule_add(symbol_table,
+	       predicate_table,
+	       params[0],
+	       ident_number - 1,
+	       &params[1]);
+    }
+  }
+}
+
 void rule_add(symbol_table_t *symbol_table,
 	      predicate_table_t *predicate_table,
 	      const char *pred_name,
@@ -368,7 +369,7 @@ void rule_add(symbol_table_t *symbol_table,
   link = predicate_table_link_add(predicate, arity, symbols);
 
   for (i=0; i<arity; ++i) {
-    symbol_table_link_add(symbols[i], arity, predicate, link);
+    symbol_table_link_add(symbols[i], i, predicate, link);
   }
 }
 
@@ -391,10 +392,36 @@ void print_symbols(symbol_table_t *table) {
   }
 }
 
+void print_predicates(predicate_table_t *table) {
+  int i,
+      j,
+      k;
+  predicate_table_node_t *node;
+  predicate_table_to_symbol_t *link;
+  symbol_table_node_t *symbol;
+
+  printf("Predicate Table:\n");
+  for (i=0; i<table->num_predicates; ++i) {
+    node = table->predicates[i];
+    for (j=0; j<node->num_link; ++j) {
+      link = node->links[j];
+      printf("%s(", node->name);
+      for (k=0; k<link->arity; ++k) {
+	symbol = link->nodes[k];
+	if (k != 0) {
+	  printf(",");
+	}
+	printf("%s", symbol->name);
+      }
+      printf(").\n");
+    }
+  }
+}
+
 void print_rules(symbol_table_t *symbol_table,
 		 predicate_table_t *predicate_table) {
   print_symbols(symbol_table);
-  predicate_table = predicate_table;
+  print_predicates(predicate_table);
 }
 
 /*****************************************
@@ -402,6 +429,8 @@ void print_rules(symbol_table_t *symbol_table,
  *****************************************/
 int main(int argc, char **argv) {
   mpc_result_t r;
+  symbol_table_t symbol_table;
+  predicate_table_t predicate_table;
   int return_value;
   const char *filename = argc > 1 ? argv[1] : NULL;
 
@@ -410,8 +439,13 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  initialize_symbol_table(&symbol_table);
+  initialize_predicate_table(&predicate_table);
+
   print_tags(r.output, 0);
-  define_facts(r.output);
+  define_facts(r.output, &symbol_table, &predicate_table);
+
+  print_rules(&symbol_table, &predicate_table);
 
   mpc_ast_delete(r.output);
 

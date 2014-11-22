@@ -27,7 +27,6 @@ void print_tags(const mpc_ast_t *, const int);
 const mpc_ast_t *find_tag(const mpc_ast_t *, const char *);
 void initialize_tag_state(find_tag_state_t *, const mpc_ast_t *);
 const mpc_ast_t *find_tag_next(find_tag_state_t *, const char *);
-void define_facts(const mpc_ast_t *);
 
 /*****************************************
  * Symbol Table
@@ -107,12 +106,14 @@ void predicate_table_node_enlarge(predicate_table_node_t *);
 /*****************************************
  * Rule Functions
  *****************************************/
+void define_facts(const mpc_ast_t *, symbol_table_t *, predicate_table_t *);
 void rule_add(symbol_table_t *,
 	      predicate_table_t *,
 	      const char *,
 	      const int,
 	      const char **);
 void print_symbols(symbol_table_t *);
+void print_predicates(predicate_table_t *);
 void print_rules(symbol_table_t *, predicate_table_t *);
 /*****************************************
  * Main Function

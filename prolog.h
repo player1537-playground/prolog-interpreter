@@ -22,6 +22,7 @@ typedef struct find_tag_state_t {
   int child;
 } find_tag_state_t;
 
+int parse_file(mpc_result_t *, const char *);
 void print_tags(const mpc_ast_t *, const int);
 const mpc_ast_t *find_tag(const mpc_ast_t *, const char *);
 void initialize_tag_state(find_tag_state_t *, const mpc_ast_t *);
@@ -106,7 +107,13 @@ void predicate_table_node_enlarge(predicate_table_node_t *);
 /*****************************************
  * Rule Functions
  *****************************************/
-
+void rule_add(symbol_table_t *,
+	      predicate_table_t *,
+	      const char *,
+	      const int,
+	      const char **);
+void print_symbols(symbol_table_t *);
+void print_rules(symbol_table_t *, predicate_table_t *);
 /*****************************************
  * Main Function
  *****************************************/

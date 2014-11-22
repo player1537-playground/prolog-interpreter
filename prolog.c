@@ -10,6 +10,64 @@
 /*****************************************
  * AST Functions
  *****************************************/
+int parse_file(mpc_result_t *r, const char *filename) {
+  mpc_parser_t	*Constant  = mpc_new("constant");
+  mpc_parser_t	*Variable  = mpc_new("variable");
+  mpc_parser_t	*Ident	   = mpc_new("ident");
+  mpc_parser_t	*Params	   = mpc_new("params");
+  mpc_parser_t	*Predicate = mpc_new("predicate");
+  mpc_parser_t  *Union     = mpc_new("union");
+  mpc_parser_t	*Fact	   = mpc_new("fact");
+  mpc_parser_t  *Query     = mpc_new("query");
+  mpc_parser_t	*Lang	   = mpc_new("lang");
+
+  int return_value;
+
+  mpca_lang(MPCA_LANG_DEFAULT,
+	    " constant  : /[a-z0-9_]+/;                            "
+	    " variable  : /[A-Z][a-z0-9_]*/;                       "
+	    " ident     : <constant> | <variable>;                 "
+	    " params    : <ident> (',' <ident>)*;                  "
+	    " predicate : <ident> '(' <params> ')';                "
+	    " union     : <predicate> (',' <predicate>)*;          "
+	    " fact      : <union> '.';                             "
+	    " query     : \"?-\" <union> '.';                      "
+	    " lang      : /^/ (<fact> | <query>)+ /$/;             ",
+	    Constant, Variable, Ident, Params, Predicate, Union, Fact, Query,
+	    Lang, NULL);
+
+  printf("Constant:  "); mpc_print(Constant);
+  printf("Variable:  "); mpc_print(Variable);
+  printf("Ident:     "); mpc_print(Ident);
+  printf("Params:    "); mpc_print(Params);
+  printf("Predicate: "); mpc_print(Predicate);
+  printf("Union:     "); mpc_print(Union);
+  printf("Fact:      "); mpc_print(Fact);
+  printf("Query:     "); mpc_print(Query);
+  printf("Lang:      "); mpc_print(Lang);
+
+  if (filename != NULL) {
+    return_value = mpc_parse_contents(filename, Lang, r);
+  } else {
+    return_value = mpc_parse_pipe("<stdin>", stdin, Lang, r);
+  }
+
+  if (!return_value) {
+    mpc_err_print(r->error);
+    mpc_err_delete(r->error);
+
+    goto cleanup;
+  }
+
+ cleanup:
+  mpc_cleanup(9,
+	      Constant, Variable, Ident, Params, Predicate,
+	      Union,    Fact,     Query, Lang
+	      );
+
+  return return_value;
+}
+
 void print_tags(const mpc_ast_t *ast, const int depth) {
   int i;
 
@@ -285,7 +343,7 @@ predicate_table_node_t *predicate_table_find(predicate_table_t *table,
 void rule_add(symbol_table_t *symbol_table,
 	      predicate_table_t *predicate_table,
 	      const char *pred_name,
-	      int arity,
+	      const int arity,
 	      const char **strings) {
   int i;
   predicate_table_node_t *predicate;
@@ -343,54 +401,13 @@ void print_rules(symbol_table_t *symbol_table,
  * Main function
  *****************************************/
 int main(int argc, char **argv) {
-
-  mpc_parser_t	*Constant  = mpc_new("constant");
-  mpc_parser_t	*Variable  = mpc_new("variable");
-  mpc_parser_t	*Ident	   = mpc_new("ident");
-  mpc_parser_t	*Params	   = mpc_new("params");
-  mpc_parser_t	*Predicate = mpc_new("predicate");
-  mpc_parser_t  *Union     = mpc_new("union");
-  mpc_parser_t	*Fact	   = mpc_new("fact");
-  mpc_parser_t  *Query     = mpc_new("query");
-  mpc_parser_t	*Lang	   = mpc_new("lang");
-
-  int return_value;
   mpc_result_t r;
+  int return_value;
+  const char *filename = argc > 1 ? argv[1] : NULL;
 
-  mpca_lang(MPCA_LANG_DEFAULT,
-	    " constant  : /[a-z0-9_]+/;                            "
-	    " variable  : /[A-Z][a-z0-9_]*/;                       "
-	    " ident     : <constant> | <variable>;                 "
-	    " params    : <ident> (',' <ident>)*;                  "
-	    " predicate : <ident> '(' <params> ')';                "
-	    " union     : <predicate> (',' <predicate>)*;          "
-	    " fact      : <union> '.';                             "
-	    " query     : \"?-\" <union> '.';                      "
-	    " lang      : /^/ (<fact> | <query>)+ /$/;             ",
-	    Constant, Variable, Ident, Params, Predicate, Union, Fact, Query,
-	    Lang, NULL);
-
-  printf("Constant:  "); mpc_print(Constant);
-  printf("Variable:  "); mpc_print(Variable);
-  printf("Ident:     "); mpc_print(Ident);
-  printf("Params:    "); mpc_print(Params);
-  printf("Predicate: "); mpc_print(Predicate);
-  printf("Union:     "); mpc_print(Union);
-  printf("Fact:      "); mpc_print(Fact);
-  printf("Query:     "); mpc_print(Query);
-  printf("Lang:      "); mpc_print(Lang);
-
-  if (argc > 1) {
-    return_value = mpc_parse_contents(argv[1], Lang, &r);
-  } else {
-    return_value = mpc_parse_pipe("<stdin>", stdin, Lang, &r);
-  }
-
+  return_value = parse_file(&r, filename);
   if (!return_value) {
-    mpc_err_print(r.error);
-    mpc_err_delete(r.error);
-
-    goto cleanup;
+    return 1;
   }
 
   print_tags(r.output, 0);
@@ -398,9 +415,5 @@ int main(int argc, char **argv) {
 
   mpc_ast_delete(r.output);
 
- cleanup:
-  mpc_cleanup(5, Ident, Params, Predicate, Fact, Lang);
-
   return 0;
-
 }

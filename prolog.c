@@ -93,6 +93,10 @@ const mpc_ast_t *find_tag(const mpc_ast_t *ast, const char *tag) {
   return find_tag_next(&state, tag);
 }
 
+int has_tag(const mpc_ast_t *ast, const char *tag) {
+  return strstr(ast->tag, tag) != NULL;
+}
+
 const mpc_ast_t *find_tag_next(find_tag_state_t *state, const char *tag) {
   int i,
       j,
@@ -109,7 +113,7 @@ const mpc_ast_t *find_tag_next(find_tag_state_t *state, const char *tag) {
 
   for (i=state->child; i<children_num; ++i) {
     child_ast = parent->children[i];
-    if (strstr(child_ast->tag, tag) != NULL) {
+    if (has_tag(child_ast, tag)) {
       state->child = i + 1;
       return child_ast;
     }
@@ -134,26 +138,12 @@ const mpc_ast_t *find_tag_next(find_tag_state_t *state, const char *tag) {
 /*****************************************
  * Symbol Table Functions
  *****************************************/
+
+/* ==== Symbol Table ==== */
 void initialize_symbol_table(symbol_table_t *table) {
   table->num_symbols = 0;
   table->num_allocated = 1;
   table->symbols = NEW(symbol_table_node_t *, table->num_allocated);
-}
-
-void initialize_symbol_table_node(symbol_table_node_t *node, const char *name) {
-  node->num_link = 0;
-  node->num_allocated = 1;
-  node->links = NEW(symbol_table_to_predicate_t *, node->num_allocated);
-  node->name = name;
-}
-
-void initialize_symbol_table_to_predicate(symbol_table_to_predicate_t *link,
-					  int pos,
-					  predicate_table_node_t *predicate,
-					  predicate_table_to_symbol_t *ref) {
-  link->position = pos;
-  link->predicate = predicate;
-  link->link = ref;
 }
 
 symbol_table_node_t *symbol_table_add(symbol_table_t *table, const char *name) {
@@ -169,21 +159,6 @@ symbol_table_node_t *symbol_table_add(symbol_table_t *table, const char *name) {
   return node;
 }
 
-void symbol_table_link_add(symbol_table_node_t *node,
-			   int pos,
-			   predicate_table_node_t *predicate,
-			   predicate_table_to_symbol_t *ref) {
-  symbol_table_to_predicate_t *link = NEW(symbol_table_to_predicate_t, 1);
-
-  initialize_symbol_table_to_predicate(link, pos, predicate, ref);
-
-  if (node->num_link >= node->num_allocated) {
-    symbol_table_node_enlarge(node);
-  }
-
-  node->links[node->num_link++] = link;
-}
-
 void symbol_table_enlarge(symbol_table_t *table) {
   table->num_allocated *= ENLARGE_FACTOR;
   table->symbols = RENEW(table->symbols,
@@ -191,11 +166,17 @@ void symbol_table_enlarge(symbol_table_t *table) {
 			 table->num_allocated);
 }
 
-void symbol_table_node_enlarge(symbol_table_node_t *node) {
-  node->num_allocated *= ENLARGE_FACTOR;
-  node->links = RENEW(node->links,
-		      symbol_table_to_predicate_t *,
-		      node->num_allocated);
+void destroy_symbol_table(symbol_table_t *table) {
+  int i;
+
+  for (i=0; i<table->num_symbols; ++i) {
+    destroy_symbol_table_node(table->symbols[i]);
+    free(table->symbols[i]);
+  }
+
+  table->num_symbols = table->num_allocated = 0;
+  free(table->symbols);
+  table->symbols = NULL;
 }
 
 symbol_table_node_t *symbol_table_find(symbol_table_t *table,
@@ -213,27 +194,74 @@ symbol_table_node_t *symbol_table_find(symbol_table_t *table,
   return NULL;
 }
 
+/* ==== Symbol Table Node ==== */
+void initialize_symbol_table_node(symbol_table_node_t *node, const char *name) {
+  node->num_link = 0;
+  node->num_allocated = 1;
+  node->links = NEW(symbol_table_to_predicate_t *, node->num_allocated);
+  node->name = name;
+}
+
+void symbol_table_node_enlarge(symbol_table_node_t *node) {
+  node->num_allocated *= ENLARGE_FACTOR;
+  node->links = RENEW(node->links,
+		      symbol_table_to_predicate_t *,
+		      node->num_allocated);
+}
+
+void destroy_symbol_table_node(symbol_table_node_t *node) {
+  int i;
+
+  for (i=0; i<node->num_link; ++i) {
+    destroy_symbol_table_to_predicate(node->links[i]);
+    free(node->links[i]);
+  }
+
+  free(node->links);
+  node->num_link = node->num_allocated = 0;
+  node->name = NULL;
+}
+
+void symbol_table_node_add(symbol_table_node_t *node,
+			   int pos,
+			   predicate_table_node_t *predicate,
+			   predicate_table_to_symbol_t *ref) {
+  symbol_table_to_predicate_t *link = NEW(symbol_table_to_predicate_t, 1);
+
+  initialize_symbol_table_to_predicate(link, pos, predicate, ref);
+
+  if (node->num_link >= node->num_allocated) {
+    symbol_table_node_enlarge(node);
+  }
+
+  node->links[node->num_link++] = link;
+}
+
+/* ==== Symbol Table to Predicate ==== */
+void initialize_symbol_table_to_predicate(symbol_table_to_predicate_t *link,
+					  int pos,
+					  predicate_table_node_t *predicate,
+					  predicate_table_to_symbol_t *ref) {
+  link->position = pos;
+  link->predicate = predicate;
+  link->link = ref;
+}
+
+void destroy_symbol_table_to_predicate(symbol_table_to_predicate_t *link) {
+  link->position = 0;
+  link->predicate = NULL;
+  link->link = NULL;
+}
+
 /*****************************************
  * Predicate Table Functions
  *****************************************/
+
+/* ==== Predicate Table ==== */
 void initialize_predicate_table(predicate_table_t *table) {
   table->num_predicates = 0;
   table->num_allocated = 1;
   table->predicates = NEW(predicate_table_node_t *, table->num_allocated);
-}
-
-void initialize_predicate_table_node(predicate_table_node_t *node,
-				     const char *name) {
-  node->num_link = 0;
-  node->num_allocated = 1;
-  node->name = name;
-  node->links = NEW(predicate_table_to_symbol_t *, node->num_allocated);
-}
-
-void initialize_predicate_table_to_symbol(predicate_table_to_symbol_t *link,
-					  int arity) {
-  link->arity = arity;
-  link->nodes = NEW(symbol_table_node_t *, arity);
 }
 
 predicate_table_node_t *predicate_table_add(predicate_table_t *table,
@@ -249,8 +277,51 @@ predicate_table_node_t *predicate_table_add(predicate_table_t *table,
   table->predicates[table->num_predicates++] = node;
   return node;
 }
+void predicate_table_enlarge(predicate_table_t *table) {
+  table->num_allocated *= ENLARGE_FACTOR;
+  table->predicates = RENEW(table->predicates,
+			    predicate_table_node_t *,
+			    table->num_allocated);
+}
 
-predicate_table_to_symbol_t *predicate_table_link_add(
+void destroy_predicate_table(predicate_table_t *table) {
+  int i;
+
+  for (i=0; i<table->num_predicates; ++i) {
+    destroy_predicate_table_node(table->predicates[i]);
+    free(table->predicates[i]);
+  }
+
+  table->num_allocated = table->num_predicates = 0;
+  free(table->predicates);
+  table->predicates = NULL;
+}
+
+predicate_table_node_t *predicate_table_find(predicate_table_t *table,
+					     const char *name) {
+  int i;
+  predicate_table_node_t *node;
+
+  for (i=0; i<table->num_predicates; ++i) {
+    node = table->predicates[i];
+    if (strcmp(name, node->name) == 0) {
+      return node;
+    }
+  }
+
+  return NULL;
+}
+
+/* ==== Predicate Table Node ==== */
+void initialize_predicate_table_node(predicate_table_node_t *node,
+				     const char *name) {
+  node->num_link = 0;
+  node->num_allocated = 1;
+  node->name = name;
+  node->links = NEW(predicate_table_to_symbol_t *, node->num_allocated);
+}
+
+predicate_table_to_symbol_t *predicate_table_node_add(
     predicate_table_node_t *node,
     int arity,
     symbol_table_node_t **nodes) {
@@ -272,13 +343,6 @@ predicate_table_to_symbol_t *predicate_table_link_add(
   return link;
 }
 
-void predicate_table_enlarge(predicate_table_t *table) {
-  table->num_allocated *= ENLARGE_FACTOR;
-  table->predicates = RENEW(table->predicates,
-			    predicate_table_node_t *,
-			    table->num_allocated);
-}
-
 void predicate_table_node_enlarge(predicate_table_node_t *node) {
   node->num_allocated *= ENLARGE_FACTOR;
   node->links = RENEW(node->links,
@@ -286,47 +350,59 @@ void predicate_table_node_enlarge(predicate_table_node_t *node) {
 		      node->num_allocated);
 }
 
-predicate_table_node_t *predicate_table_find(predicate_table_t *table,
-					     const char *name) {
+void destroy_predicate_table_node(predicate_table_node_t *node) {
   int i;
-  predicate_table_node_t *node;
 
-  for (i=0; i<table->num_predicates; ++i) {
-    node = table->predicates[i];
-    if (strcmp(name, node->name) == 0) {
-      return node;
-    }
+  for (i=0; i<node->num_link; ++i) {
+    destroy_predicate_table_to_symbol(node->links[i]);
+    free(node->links[i]);
   }
 
-  return NULL;
+  node->num_link = node->num_allocated = 0;
+  free(node->links);
+  node->links = NULL;
+}
+
+/* ==== Predicate Table to Symbol ==== */
+void initialize_predicate_table_to_symbol(predicate_table_to_symbol_t *link,
+					  int arity) {
+  link->arity = arity;
+  link->nodes = NEW(symbol_table_node_t *, arity);
+}
+
+void destroy_predicate_table_to_symbol(predicate_table_to_symbol_t *link) {
+  free(link->nodes);
+  link->arity = 0;
 }
 
 /*****************************************
  * Solve Functions
  *****************************************/
-void initialize_solve(solve_t *solve, int num_goals) {
-  int i;
-
-  solve->num_goals = num_goals;
-  solve->goals = NEW(solve_goal_t *, num_goals);
-  solve->states = NEW(solve_goal_state_t *, num_goals);
-
-  for (i=0; i<num_goals; ++i) {
-    solve->goals[i] = solve->states[i] = NULL;
-  }
+void initialize_solve(solve_t *solve) {
+  solve->num_goals = 0;
+  solve->num_allocated = 1;
+  solve->goals = NEW(solve_goal_t *, solve->num_allocated);
+  solve->states = NEW(solve_goal_state_t *, solve->num_allocated);
 }
 
 void solve_add(solve_t *solve, solve_goal_t *goal) {
-  int i;
-
-  for (i=0; i<solve->num_goals && solve->goals[i] != NULL; ++i) {
-    // Do nothing.
+  if (solve->num_goals >= solve->num_allocated) {
+    solve_enlarge(solve);
   }
 
-  assert(i != solve->num_goals);
+  solve->goals[solve->num_goals] = goal;
+  initialize_solve_goal_state(solve->states[solve->num_goals], goal);
+  solve->num_goals++;
+}
 
-  solve->goals[i] = goal;
-  initialize_solve_goal_state(solve->states[i], goal);
+void solve_enlarge(solve_t *solve) {
+  solve->num_allocated *= ENLARGE_FACTOR;
+  solve->goals = RENEW(solve->goals,
+		       solve_goal_t *,
+		       solve->num_allocated);
+  solve->states = RENEW(solve->states,
+			solve_goal_state_t *,
+			solve->num_allocated);
 }
 
 void initialize_solve_goal_state(solve_goal_state_t *state,
@@ -338,29 +414,26 @@ void initialize_solve_goal_state(solve_goal_state_t *state,
 }
 
 void initialize_solve_goal(solve_goal_t *goal,
-			   predicate_table_node_t *predicate,
-			   int num_subgoals) {
-  int i;
-
+			   predicate_table_node_t *predicate) {
   goal->predicate = predicate;
-  goal->num_subgoals = num_subgoals;
-  goal->subgoals = NEW(solve_subgoal_t *, num_subgoals);
+  goal->num_subgoals = 0;
+  goal->num_allocated = 1;
+  goal->subgoals = NEW(solve_subgoal_t *, goal->num_allocated);
+}
 
-  for (i=0; i<num_subgoals; ++i) {
-    goal->subgoals[i] = NULL;
-  }
+void solve_goal_enlarge(solve_goal_t *goal) {
+  goal->num_allocated *= ENLARGE_FACTOR;
+  goal->subgoals = RENEW(goal->subgoals,
+			 solve_subgoal_t *,
+			 goal->num_allocated);
 }
 
 void solve_goal_add(solve_goal_t *goal, solve_subgoal_t *subgoal) {
-  int i;
-
-  for (i=0; i<goal->num_subgoals && goal->subgoals[i] != NULL; ++i) {
-    // Do nothing.
+  if (goal->num_subgoals >= goal->num_allocated) {
+    solve_goal_enlarge(goal);
   }
 
-  assert(i != goal->num_subgoals);
-
-  goal->subgoals[i] = subgoal;
+  goal->subgoals[goal->num_subgoals] = subgoal;
 }
 
 void initialize_solve_subgoal(solve_subgoal_t *subgoal,
@@ -376,9 +449,55 @@ void initialize_solve_condition_constant(solve_condition_t *condition,
   condition->symbol = symbol;
 }
 
-void initialize_solve_condition_variable(solve_condition_t *variable) {
+void initialize_solve_condition_variable(solve_condition_t *condition,
+					 symbol_table_node_t *symbol) {
   condition->type = VARIABLE;
-  condition->symbol = NULL;
+  condition->symbol = symbol;
+}
+
+void initialize_solve_variable_table(solve_variable_table_t *table) {
+  table->num_variables = 0;
+  table->num_allocated = 1;
+  table->conditions = NEW(solve_condition_t *, table->num_allocated);
+}
+
+void solve_variable_table_add(solve_variable_table_t *table, const char *name) {
+  symbol_table_node_t *symbol = NEW(symbol_table_node_t, 1);
+  solve_condition_t *condition = NEW(solve_condition_t, 1);
+
+  assert(symbol != NULL);
+  assert(condition != NULL);
+
+  initialize_symbol_table_node(symbol, name);
+  initialize_solve_condition_variable(condition, symbol);
+
+  if (table->num_variables >= table->num_allocated) {
+    solve_variable_table_enlarge(table);
+  }
+
+  table->conditions[table->num_variables++] = condition;
+}
+
+void solve_variable_table_enlarge(solve_variable_table_t *table) {
+  table->num_allocated *= ENLARGE_FACTOR;
+  table->conditions = RENEW(table->conditions,
+			    solve_condition_t *,
+			    table->num_allocated);
+}
+
+solve_condition_t *solve_variable_table_find(solve_variable_table_t *table,
+					     const char *name) {
+  int i;
+  solve_condition_t *condition;
+
+  for (i=0; i<table->num_variables; ++i) {
+    condition = table->conditions[i];
+    if (strcmp(condition->symbol->name, name) == 0) {
+      return condition;
+    }
+  }
+
+  return NULL;
 }
 
 void solve_goal_helper(solve_goal_t *goal,
@@ -388,18 +507,24 @@ void solve_goal_helper(solve_goal_t *goal,
 		       int num_params,
 		       const char *param_names) {
   predicate_table_node_t *predicate;
+  symbol_table_node_t *symbol;
   int i;
 
   predicate = predicate_table_find(predicate_table, pred_name);
 
   assert(predicate != NULL);
-  initialize_solve_goal(predicate, num_params);
+  initialize_solve_goal(goal, predicate);
 
   for (i=0; i<num_params; ++i) {
-    // Lookup each param_name in the symbol table
-    // Add the symbol to the solve_goal
-    // Note: May need to actually add a solve_table_t to keep track of all the
-    //   instantiated values, and to aid with looking up variable names.
+    /* Lookup each param_name in the symbol table */
+    symbol = symbol_table_find(symbol_table, param_names[i]);
+    assert(symbol != NULL);
+
+    /* Add the symbol to the solve_goal */
+
+    /* Note: May need to actually add a solve_table_t to keep track of all the
+     *  instantiated values, and to aid with looking up variable names.
+     */
   }
 }
 
@@ -447,20 +572,62 @@ void define_facts(const mpc_ast_t *ast,
 void execute_queries(const mpc_ast_t *ast,
 		     symbol_table_t *symbol_table,
 		     predicate_table_t *predicate_table) {
-  const char *params[MAX_PARAMS];
-  find_tag_state_t query_state,
-                   predicate_state,
-                   pred_ident,
-                   ident_state;
-  const mpc_ast_t *query,
-                  *predicate,
-                  *ident;
+  find_tag_state_t query_state;
+  const mpc_ast_t *query;
 
   initialize_tag_state(&query_state, ast);
   while ((query = find_tag_next(&query_state, "query")) != NULL) {
-    initialize_tag_state(&predicate_state, query);
-    while ((predicate = find_tag_next(&predicate_state, "predicate")) != NULL) {
+    execute_query(query, symbol_table, predicate_table);
+  }
+}
 
+void execute_query(const mpc_ast_t *ast,
+		   symbol_table_t *symbol_table,
+		   predicate_table_t *predicate_table_t) {
+  int ident_number;
+  const char *name;
+  find_tag_state_t predicate_state,
+                   ident_state;
+  const mpc_ast_t *predicate,
+                  *ident;
+  solve_t solve;
+  solve_goal_t *goal;
+  solve_subgoal_t *subgoal;
+  solve_variable_table_t *variables;
+  solve_condition_t *condition;
+  symbol_table_node_t *symbol;
+
+  initialize_tag_state(&predicate_state, ast);
+  while ((predicate = find_tag_next(&predicate_state, "predicate")) != NULL) {
+    goal = NEW(solve_goal_t, 1);
+    assert(goal != NULL);
+
+    ident_number = 0;
+    initialize_tag_state(&ident_state, predicate);
+    while ((ident = find_tag_next(&ident_state, "ident")) != NULL) {
+      name = ident->contents;
+      if (has_tag(ident, "variable")) {
+	condition = solve_variable_table_find(variables, name);
+	if (condition == NULL) {
+	  condition = solve_variable_table_add(variables, name);
+	}
+      } else /* has_tag(ident, "constant") */ {
+	symbol = symbol_table_find(symbol_table, name);
+	if (symbol == NULL) {
+	  symbol = symbol_table_add(symbol_table, name);
+	}
+
+	condition = NEW(solve_condition_t, 1);
+	assert(condition != NULL);
+
+	initialize_solve_condition_constant(condition, symbol);
+      }
+
+      subgoal = NEW(solve_subgoal_t, 1);
+      assert(subgoal != NULL);
+
+      initialize_solve_subgoal(subgoal, ident_number++, condition);
+      solve_goal_add(goal, subgoal);
     }
   }
 }
@@ -490,10 +657,10 @@ void rule_add(symbol_table_t *symbol_table,
     symbols[i] = symbol;
   }
 
-  link = predicate_table_link_add(predicate, arity, symbols);
+  link = predicate_table_node_add(predicate, arity, symbols);
 
   for (i=0; i<arity; ++i) {
-    symbol_table_link_add(symbols[i], i, predicate, link);
+    symbol_table_node_add(symbols[i], i, predicate, link);
   }
 }
 
@@ -571,6 +738,8 @@ int main(int argc, char **argv) {
 
   print_rules(&symbol_table, &predicate_table);
 
+  destroy_symbol_table(&symbol_table);
+  destroy_predicate_table(&predicate_table);
   mpc_ast_delete(r.output);
 
   return 0;

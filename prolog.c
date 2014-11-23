@@ -146,17 +146,12 @@ void initialize_symbol_table(symbol_table_t *table) {
   table->symbols = NEW(symbol_table_node_t *, table->num_allocated);
 }
 
-symbol_table_node_t *symbol_table_add(symbol_table_t *table, const char *name) {
-  symbol_table_node_t *node = NEW(symbol_table_node_t, 1);
-
-  initialize_symbol_table_node(node, name);
-
+void symbol_table_add(symbol_table_t *table, symbol_table_node_t *node) {
   if (table->num_symbols >= table->num_allocated) {
     symbol_table_enlarge(table);
   }
 
   table->symbols[table->num_symbols++] = node;
-  return node;
 }
 
 void symbol_table_enlarge(symbol_table_t *table) {
@@ -192,6 +187,19 @@ symbol_table_node_t *symbol_table_find(symbol_table_t *table,
   }
 
   return NULL;
+}
+
+symbol_table_node_t *symbol_table_find_or_add(symbol_table_t *table,
+					      const char *name) {
+  symbol_table_node_t *node = symbol_table_find(table, name);
+
+  if (node == NULL) {
+    node = NEW(symbol_table_node_t, 1);
+    initialize_symbol_table_node(node, name);
+    symbol_table_add(table, node);
+  }
+
+  return node;
 }
 
 /* ==== Symbol Table Node ==== */
@@ -265,11 +273,7 @@ void initialize_predicate_table(predicate_table_t *table) {
 }
 
 predicate_table_node_t *predicate_table_add(predicate_table_t *table,
-					    const char *name) {
-  predicate_table_node_t *node = NEW(predicate_table_node_t, 1);
-
-  initialize_predicate_table_node(node, name);
-
+					    predicate_table_node_t *node) {
   if (table->num_predicates >= table->num_allocated) {
     predicate_table_enlarge(table);
   }
@@ -277,6 +281,7 @@ predicate_table_node_t *predicate_table_add(predicate_table_t *table,
   table->predicates[table->num_predicates++] = node;
   return node;
 }
+
 void predicate_table_enlarge(predicate_table_t *table) {
   table->num_allocated *= ENLARGE_FACTOR;
   table->predicates = RENEW(table->predicates,
@@ -310,6 +315,20 @@ predicate_table_node_t *predicate_table_find(predicate_table_t *table,
   }
 
   return NULL;
+}
+
+predicate_table_node_t *predicate_table_find_or_add(predicate_table_t *table,
+						    const char *name) {
+  predicate_table_node_t *node = predicate_table_find(table, name);
+
+  if (node == NULL) {
+    node = NEW(predicate_table_node_t, 1);
+    assert(node != NULL);
+    initialize_predicate_table_node(node, name);
+    predicate_table_add(table, node);
+  }
+
+  return node;
 }
 
 /* ==== Predicate Table Node ==== */
@@ -461,16 +480,8 @@ void initialize_solve_variable_table(solve_variable_table_t *table) {
   table->conditions = NEW(solve_condition_t *, table->num_allocated);
 }
 
-void solve_variable_table_add(solve_variable_table_t *table, const char *name) {
-  symbol_table_node_t *symbol = NEW(symbol_table_node_t, 1);
-  solve_condition_t *condition = NEW(solve_condition_t, 1);
-
-  assert(symbol != NULL);
-  assert(condition != NULL);
-
-  initialize_symbol_table_node(symbol, name);
-  initialize_solve_condition_variable(condition, symbol);
-
+void solve_variable_table_add(solve_variable_table_t *table,
+			      solve_condition_t *condition) {
   if (table->num_variables >= table->num_allocated) {
     solve_variable_table_enlarge(table);
   }
@@ -500,34 +511,26 @@ solve_condition_t *solve_variable_table_find(solve_variable_table_t *table,
   return NULL;
 }
 
-void solve_goal_helper(solve_goal_t *goal,
-		       symbol_table_t *symbol_table,
-		       predicate_table_t *predicate_table,
-		       const char *pred_name,
-		       int num_params,
-		       const char *param_names) {
-  predicate_table_node_t *predicate;
+solve_condition_t *solve_variable_table_find_or_add(
+    solve_variable_table_t *table,
+    const char *name) {
   symbol_table_node_t *symbol;
-  int i;
+  solve_condition_t *condition = solve_variable_table_find(table, name);
 
-  predicate = predicate_table_find(predicate_table, pred_name);
-
-  assert(predicate != NULL);
-  initialize_solve_goal(goal, predicate);
-
-  for (i=0; i<num_params; ++i) {
-    /* Lookup each param_name in the symbol table */
-    symbol = symbol_table_find(symbol_table, param_names[i]);
+  if (condition == NULL) {
+    symbol = NEW(symbol_table_node_t, 1);
     assert(symbol != NULL);
+    initialize_symbol_table_node(symbol, name);
 
-    /* Add the symbol to the solve_goal */
+    condition = NEW(solve_condition_t, 1);
+    assert(condition != NULL);
+    initialize_solve_condition_variable(condition, symbol);
 
-    /* Note: May need to actually add a solve_table_t to keep track of all the
-     *  instantiated values, and to aid with looking up variable names.
-     */
+    solve_variable_table_add(table, condition);
   }
-}
 
+  return condition;
+}
 
 /*****************************************
  * Rule Functions
@@ -583,7 +586,7 @@ void execute_queries(const mpc_ast_t *ast,
 
 void execute_query(const mpc_ast_t *ast,
 		   symbol_table_t *symbol_table,
-		   predicate_table_t *predicate_table_t) {
+		   predicate_table_t *predicate_table) {
   int ident_number;
   const char *name;
   find_tag_state_t predicate_state,
@@ -593,9 +596,13 @@ void execute_query(const mpc_ast_t *ast,
   solve_t solve;
   solve_goal_t *goal;
   solve_subgoal_t *subgoal;
-  solve_variable_table_t *variables;
+  solve_variable_table_t variables;
   solve_condition_t *condition;
   symbol_table_node_t *symbol;
+
+  initialize_solve(&solve);
+  initialize_solve_variable_table(&variables);
+  predicate_table = predicate_table;
 
   initialize_tag_state(&predicate_state, ast);
   while ((predicate = find_tag_next(&predicate_state, "predicate")) != NULL) {
@@ -607,15 +614,9 @@ void execute_query(const mpc_ast_t *ast,
     while ((ident = find_tag_next(&ident_state, "ident")) != NULL) {
       name = ident->contents;
       if (has_tag(ident, "variable")) {
-	condition = solve_variable_table_find(variables, name);
-	if (condition == NULL) {
-	  condition = solve_variable_table_add(variables, name);
-	}
+	condition = solve_variable_table_find_or_add(&variables, name);
       } else /* has_tag(ident, "constant") */ {
-	symbol = symbol_table_find(symbol_table, name);
-	if (symbol == NULL) {
-	  symbol = symbol_table_add(symbol_table, name);
-	}
+	symbol = symbol_table_find_or_add(symbol_table, name);
 
 	condition = NEW(solve_condition_t, 1);
 	assert(condition != NULL);
@@ -641,20 +642,11 @@ void rule_add(symbol_table_t *symbol_table,
   predicate_table_node_t *predicate;
   predicate_table_to_symbol_t *link;
   symbol_table_node_t *symbols[MAX_PARAMS];
-  symbol_table_node_t *symbol;
 
-  predicate = predicate_table_find(predicate_table, pred_name);
-  if (!predicate) {
-    predicate = predicate_table_add(predicate_table, pred_name);
-  }
+  predicate = predicate_table_find_or_add(predicate_table, pred_name);
 
   for (i=0; i<arity; ++i) {
-    symbol = symbol_table_find(symbol_table, strings[i]);
-    if (!symbol) {
-      symbol = symbol_table_add(symbol_table, strings[i]);
-    }
-
-    symbols[i] = symbol;
+    symbols[i] = symbol_table_find_or_add(symbol_table, strings[i]);
   }
 
   link = predicate_table_node_add(predicate, arity, symbols);

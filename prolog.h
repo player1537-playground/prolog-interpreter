@@ -175,6 +175,10 @@ void destroy_predicate_table_to_symbol(predicate_table_to_symbol_t *);
 void define_facts(const mpc_ast_t *, symbol_table_t *, predicate_table_t *);
 void execute_queries(const mpc_ast_t *, symbol_table_t *, predicate_table_t *);
 void execute_query(const mpc_ast_t *, symbol_table_t *, predicate_table_t *);
+solve_goal_t *execute_query_build_goal(const mpc_ast_t *,
+				       symbol_table_t *,
+				       predicate_table_t *,
+				       solve_variable_table_t *);
 void rule_add(symbol_table_t *,
 	      predicate_table_t *,
 	      const char *,

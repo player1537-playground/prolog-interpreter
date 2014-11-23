@@ -587,18 +587,11 @@ void execute_queries(const mpc_ast_t *ast,
 void execute_query(const mpc_ast_t *ast,
 		   symbol_table_t *symbol_table,
 		   predicate_table_t *predicate_table) {
-  int ident_number;
-  const char *name;
-  find_tag_state_t predicate_state,
-                   ident_state;
-  const mpc_ast_t *predicate,
-                  *ident;
+  find_tag_state_t predicate_state;
+  const mpc_ast_t *predicate;
+  solve_variable_table_t variables;
   solve_t solve;
   solve_goal_t *goal;
-  solve_subgoal_t *subgoal;
-  solve_variable_table_t variables;
-  solve_condition_t *condition;
-  symbol_table_node_t *symbol;
 
   initialize_solve(&solve);
   initialize_solve_variable_table(&variables);
@@ -606,31 +599,64 @@ void execute_query(const mpc_ast_t *ast,
 
   initialize_tag_state(&predicate_state, ast);
   while ((predicate = find_tag_next(&predicate_state, "predicate")) != NULL) {
-    goal = NEW(solve_goal_t, 1);
-    assert(goal != NULL);
-
-    ident_number = 0;
-    initialize_tag_state(&ident_state, predicate);
-    while ((ident = find_tag_next(&ident_state, "ident")) != NULL) {
-      name = ident->contents;
-      if (has_tag(ident, "variable")) {
-	condition = solve_variable_table_find_or_add(&variables, name);
-      } else /* has_tag(ident, "constant") */ {
-	symbol = symbol_table_find_or_add(symbol_table, name);
-
-	condition = NEW(solve_condition_t, 1);
-	assert(condition != NULL);
-
-	initialize_solve_condition_constant(condition, symbol);
-      }
-
-      subgoal = NEW(solve_subgoal_t, 1);
-      assert(subgoal != NULL);
-
-      initialize_solve_subgoal(subgoal, ident_number++, condition);
-      solve_goal_add(goal, subgoal);
-    }
+    goal = execute_query_build_goal(predicate,
+				    symbol_table,
+				    predicate_table,
+				    &variables);
+    solve_add(&solve, goal);
   }
+
+  /* unify(&solve, &variables); */
+}
+
+solve_goal_t *execute_query_build_goal(const mpc_ast_t *ast,
+				       symbol_table_t *symbol_table,
+				       predicate_table_t *predicate_table,
+				       solve_variable_table_t *variables) {
+  int ident_number;
+  const char *name;
+  find_tag_state_t ident_state;
+  const mpc_ast_t *ident;
+  solve_goal_t *goal = NEW(solve_goal_t, 1);
+  predicate_table_node_t *predicate;
+  solve_subgoal_t *subgoal;
+  solve_condition_t *condition;
+  symbol_table_node_t *symbol;
+
+  goal = NEW(solve_goal_t, 1);
+  assert(goal != NULL);
+
+  ident_number = 0;
+  initialize_tag_state(&ident_state, ast);
+  {
+    ident = find_tag_next(&ident_state, "ident");
+
+    name = ident->contents;
+    predicate = predicate_table_find_or_add(predicate_table, name);
+    initialize_solve_goal(goal, predicate);
+  }
+
+  while ((ident = find_tag_next(&ident_state, "ident")) != NULL) {
+    name = ident->contents;
+    if (has_tag(ident, "variable")) {
+      condition = solve_variable_table_find_or_add(variables, name);
+    } else /* has_tag(ident, "constant") */ {
+      symbol = symbol_table_find_or_add(symbol_table, name);
+
+      condition = NEW(solve_condition_t, 1);
+      assert(condition != NULL);
+
+      initialize_solve_condition_constant(condition, symbol);
+    }
+
+    subgoal = NEW(solve_subgoal_t, 1);
+    assert(subgoal != NULL);
+
+    initialize_solve_subgoal(subgoal, ident_number++, condition);
+    solve_goal_add(goal, subgoal);
+  }
+
+  return goal;
 }
 
 void rule_add(symbol_table_t *symbol_table,
